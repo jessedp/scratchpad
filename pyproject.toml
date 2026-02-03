@@ -1,0 +1,10 @@
+[project]
+name = "scratchpad"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "faker>=40.1.2",
+    "flask>=3.1.2",
+]

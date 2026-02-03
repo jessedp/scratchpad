@@ -1,0 +1,18 @@
+{% for msg in messages %}
+<div class="message-card" id="msg-{{ msg.id }}" data-id="{{ msg.id }}">
+    <div class="meta">
+        <span>ID: {{ msg.id }}</span>
+        <span>{{ msg.timestamp.split('T')[0] }} {{ msg.timestamp.split('T')[1][:8] }}</span>
+    </div>
+    
+    <div class="raw-content" style="display:none;">{{ msg.content }}</div>
+
+    <div class="content-preview">{{ msg.content }}</div>
+    <div class="content-full"></div>
+
+    <div class="controls">
+        <button class="action-btn expand-btn" onclick="toggleExpand(this)">Expand</button>
+        <button class="action-btn copy-btn" onclick="copyText(this)">Copy</button>
+    </div>
+</div>
+{% endfor %}
