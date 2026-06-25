@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NAS Usage Report - lotsofthings</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 1200px; margin: 0 auto; padding: 20px; background: #f4f7f6; }
+        h1, h2 { color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th { background: #f8f9fa; font-weight: 600; cursor: pointer; position: relative; }
+        th:hover { background: #eef1f4; }
+        th::after { content: '↕'; position: absolute; right: 8px; opacity: 0.3; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #eee; }
+        tr:hover { background: #f9fbfd; }
+        
+        /* Size Styling */
+        .size-cell { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; text-align: right; font-weight: 500; }
+        .unit-tb { color: #d35400; font-weight: bold; } /* Orange/Dark for TB */
+        .unit-gb { color: #2980b9; } /* Blue for GB */
+        .unit-mb { color: #7f8c8d; font-size: 0.9em; } /* Grey for MB */
+        
+        /* Trend Styling */
+        .trend { font-size: 0.85em; font-weight: bold; padding: 2px 6px; border-radius: 4px; }
+        .up { background: #fdedec; color: #e74c3c; }
+        .down { background: #eafaf1; color: #27ae60; }
+        .neutral { color: #95a5a6; font-weight: normal; }
+        
+        .timestamp { color: #7f8c8d; font-size: 0.9em; margin-bottom: 20px; }
+        .back-link, .breadcrumbs a { display: inline-block; text-decoration: none; color: #3498db; }
+        .breadcrumbs { font-size: 0.95em; color: #7f8c8d; }
+    </style>
+</head>
+<body>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <a href="/" class="back-link">← Back to Scratchpad</a>
+        <div class="breadcrumbs">
+            <a href="/nas-report">Top Level</a>
+            {% if current_dir %}
+                {% set parts = current_dir.split('/') %}
+                {% for i in range(parts|length) %}
+                    {% set path = parts[:i+1]|join('/') %}
+                    <span class="neutral"> / </span>
+                    <a href="/nas-report?dir={{ path }}">{{ parts[i] }}</a>
+                {% endfor %}
+            {% endif %}
+        </div>
+    </div>
+    
+    <h1>NAS Usage Report: lotsofthings</h1>
+    {% if current_dir %}
+        <div style="margin-bottom: 10px; font-weight: bold; color: #2c3e50;">
+            Path: /{{ current_dir }}
+        </div>
+    {% endif %}
+    <div class="timestamp">Last Updated: {{ latest.timestamp }}</div>
+
+    {% macro format_size(bytes) -%}
+        {% if bytes >= 1000000000000 %}
+            <span class="unit-tb">{{ (bytes / 1000000000000) | round(2) }} TB</span>
+        {% elif bytes >= 1000000000 %}
+            <span class="unit-gb">{{ (bytes / 1000000000) | round(2) }} GB</span>
+        {% else %}
+            <span class="unit-mb">{{ (bytes / 1000000) | round(2) }} MB</span>
+        {% endif %}
+    {%- endmacro %}
+
+    <div class="card">
+        <h2>System Disk Space</h2>
+        {% if latest.disk %}
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <div>
+                    <strong>{{ format_size(latest.disk.available) }}</strong> available 
+                    of {{ format_size(latest.disk.total) }}
+                </div>
+                <div style="color: #7f8c8d; font-size: 0.9em;">
+                    {{ (latest.disk.used / latest.disk.total * 100) | round(1) }}% Used
+                </div>
+            </div>
+            <div style="background: #eee; height: 20px; border-radius: 10px; overflow: hidden; margin-bottom: 10px;">
+                <div style="background: #3498db; width: {{ (latest.disk.used / latest.disk.total * 100) | round(1) }}%; height: 100%;"></div>
+            </div>
+            <div style="display: flex; gap: 20px; font-size: 0.9em; color: #7f8c8d;">
+                <span>Used: {{ format_size(latest.disk.used) }}</span>
+                <span>Total: {{ format_size(latest.disk.total) }}</span>
+            </div>
+        {% else %}
+            <p class="neutral">Disk statistics not yet available for this entry.</p>
+        {% endif %}
+    </div>
+
+    <div class="card">
+        <h2>Current Usage</h2>
+        <table id="usageTable">
+            <thead>
+                <tr>
+                    <th onclick="sortTable(0)">Directory</th>
+                    <th onclick="sortTable(1)" style="text-align: right;">Size</th>
+                    <th onclick="sortTable(2)" style="text-align: right;">Change (24h)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for dir_name in dirs %}
+                    {% set current_size = latest.dirs.get(dir_name, 0) %}
+                    {% set prev_entry = history[-2] if history|length > 1 else none %}
+                    {% set prev_size = prev_entry.dirs.get(dir_name, 0) if prev_entry else current_size %}
+                    {% set diff = current_size - prev_size %}
+                    
+                    {# Check if this item has children in the latest data #}
+                    {% set ns = namespace(has_children=false) %}
+                    {% for key in latest.dirs.keys() %}
+                        {% if key.startswith(dir_name + '/') %}
+                            {% set ns.has_children = true %}
+                        {% endif %}
+                    {% endfor %}
+
+                    <tr data-size="{{ current_size }}" data-diff="{{ diff }}">
+                        <td>
+                            {% if ns.has_children %}
+                                <a href="/nas-report?dir={{ dir_name }}" style="text-decoration: none; color: #3498db;">📁 {{ dir_name.split('/')[-1] }}</a>
+                            {% else %}
+                                📄 {{ dir_name.split('/')[-1] }}
+                            {% endif %}
+                        </td>
+                        <td class="size-cell" data-value="{{ current_size }}">
+                            {{ format_size(current_size) }}
+                        </td>
+                        <td class="size-cell" data-value="{{ diff }}">
+                            {% if diff > 0 %}
+                                <span class="trend up">+{{ format_size(diff) }}</span>
+                            {% elif diff < 0 %}
+                                <span class="trend down">{{ format_size(diff) }}</span>
+                            {% else %}
+                                <span class="trend neutral">--</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+    function sortTable(n) {
+        var table = document.getElementById("usageTable");
+        var rows = Array.from(table.rows).slice(1);
+        var dir = table.getAttribute("data-sort-dir") === "asc" ? "desc" : "asc";
+        table.setAttribute("data-sort-dir", dir);
+
+        rows.sort(function(a, b) {
+            var valA, valB;
+            if (n === 0) {
+                valA = a.cells[n].innerText.toLowerCase();
+                valB = b.cells[n].innerText.toLowerCase();
+                return dir === "asc" ? valA.localeCompare(valB) : valB.localeCompare(valA);
+            } else {
+                valA = parseFloat(a.cells[n].getAttribute("data-value"));
+                valB = parseFloat(b.cells[n].getAttribute("data-value"));
+                return dir === "asc" ? valA - valB : valB - valA;
+            }
+        });
+
+        rows.forEach(row => table.tBodies[0].appendChild(row));
+    }
+
+    // Default sort: Change desc, then Size desc
+    window.onload = function() {
+        var table = document.getElementById("usageTable");
+        var rows = Array.from(table.rows).slice(1);
+        rows.sort(function(a, b) {
+            var diffA = parseFloat(a.getAttribute("data-diff"));
+            var diffB = parseFloat(b.getAttribute("data-diff"));
+            if (diffB !== diffA) return diffB - diffA;
+            return parseFloat(b.getAttribute("data-size")) - parseFloat(a.getAttribute("data-size"));
+        });
+        rows.forEach(row => table.tBodies[0].appendChild(row));
+    };
+    </script>
+</body>
+</html>

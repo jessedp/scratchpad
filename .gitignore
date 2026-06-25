@@ -9,3 +9,5 @@ wheels/
 # Virtual environments
 .venv
 data/messages.json
+data/nas_history.jsonl
+
